@@ -1,0 +1,335 @@
+%% Load Phantom
+
+clear;
+matRad_rc;
+matRad_cfg = MatRad_Config.instance();
+
+load('BOXPHANTOM.mat');
+
+%% Set cst physical Dose
+
+%cst{1,6} = {struct(DoseObjectives.matRad_SquaredOverdosing(5,4.2))};
+%
+for i=1:size(cst,1)
+    cst{i,6}{1}.robustness = 'none';
+    cst{i,6}{1}.quantity   = 'physicalDose';
+    cst{i,5}.alphaX = [0.04];
+    cst{i,5}.betaX = [0.06];
+end
+
+%% Set cst cluster dose 
+
+for i=1:size(cst,1)
+    cst{i,6}{1}.robustness = 'none';
+    cst{i,6}{1}.quantity   = 'clusterDose';
+end
+
+cst{1,6}{1}.parameters  = {[2.0e16]};
+cst{1,6}{1}.penalty     = 1e-27;
+
+cst{2,6}{1}.parameters  = {[3.9e16]};
+cst{1,6}{1}.penalty     = 1e-25;
+
+%% Set pln options
+
+pln.radiationMode   = 'carbon';
+pln.machine         = 'Generic_RBE_clusterDose';
+pln.multScen        = 'nomScen';
+pln.numOfFractions  = 30;
+
+pln.propStf.gantryAngles                = [-90];
+pln.propStf.couchAngles                 = [0];
+pln.propStf.bixelWidth                  = 5;
+pln.propStf.longitudinalSpotSpacing     = 2;
+pln.propStf.numOfBeams                  = numel(pln.propStf.gantryAngles);
+pln.propStf.isoCenter                   = ones(pln.propStf.numOfBeams,1) * matRad_getIsoCenter(cst,ct,0);
+
+% optimization settings
+pln.propOpt.optimizer       = 'IPOPT'; 
+pln.propOpt.runDAO        = 0;
+pln.propSeq.runSequencing = 0;
+
+% dose calculation settings
+pln.propDoseCalc.doseGrid.resolution.x = 4;
+pln.propDoseCalc.doseGrid.resolution.y = 4;
+pln.propDoseCalc.doseGrid.resolution.z = 4;
+pln.propDoseCalc.engine = 'HongPB';
+
+%Turn on to correct for nozzle-to-skin air WEPL in analytical calculation
+pln.propDoseCalc.airOffsetCorrection = true;
+
+% retrieve scenarios for dose calculation and optimziation
+pln.multScen = matRad_multScen(ct,'nomScen'); % optimize on the nominal scenario     
+
+%Enable/Disable use of range shifter (has effect only when we need to fill 
+%up the low-range region)
+pln.propStf.useRangeShifter = false;  
+
+%Enable LET calculation
+pln.propDoseCalc.calcLET = true;
+
+% Cutoff method
+pln.propDoseCalc.cutOffMethod = 'relative';
+pln.propDoseCalc.dosimetricLateralCutOff = 0.98;
+pln.propDoseCalc.visBoolLateralCutOff       = 1;
+pln.propDoseCalc.lateralModel = 'double';
+
+%% Set Cluster dose calculation options
+
+pln.propDoseCalc.calcClusterDose            = true;
+pln.propDoseCalc.clusterDoseIP              = 'F';
+pln.propDoseCalc.clusterDoseK               = 5;
+pln.propDoseCalc.calcClusterDoseFromFluence = false;
+pln.propDoseCalc.calcCDScatteringFromDose   = true;
+pln.propDoseCalc.calcPrimary                = false;
+pln.propDoseCalc.calcSecondary              = false;
+pln.propDoseCalc.calcBioDose                = true;
+pln.propDoseCalc.includeElectrons           = false;
+%pln.propDoseCalc.scoreTOPAS_RBE             = false;
+
+pln.propDoseCalc.MCTSdatabase	            = 2024;
+
+%% Forward calculation
+
+
+pln.propDoseCalc.engine = 'HongPB';
+%resultGUI = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w);
+
+%% generate steering file
+
+%pln.propStf.generator = 'ParticleSingleSpot';
+stf = matRad_generateStf(ct,cst,pln);
+stf.machine = pln.machine;
+
+%% Dose calc
+
+% Select biological model
+% Available models are:
+%   RBEminMax (LET based): MCN, WED, CAR, LSM, (protons)
+%                          HEL                 (helium)
+%   kernel based:          LEM                 (carbon)
+
+% We will compare the MCN model to constRBE.
+% We will plan with the the MCN model.
+%pln.bioModel = matRad_MCNamara(); 
+% pln.bioModel = matRad_bioModel(pln.radiationMode,'LEM');
+%altnerative: pln.bioModel = 'MCN';
+
+pln.bioModel = matRad_bioModel(pln.radiationMode,'doseAveragedTabulatedAlphaBeta');
+%pln.bioModel.quantityTableName = 'RBE_LEM1_T1';
+pln.bioModel.quantityTableName = 'RBE_mMKM_update_rn5';
+
+pln.bioModel.defaultAlphaX = 0.04;
+pln.bioModel.defaultBetaX = 0.06;
+
+if strcmp(pln.radiationMode, 'protons') || strcmp(pln.radiationMode, 'helium')
+    pln.bioModel.includedFragments = struct('Z', {1,1,1,2}, 'A', {1,2,3,4});%[1, 1];% {'H1', 'C'};
+elseif strcmp(pln.radiationMode, 'carbon')
+    pln.bioModel.includedFragments = struct('Z', {1,1,1,2,3,4,5,6}, 'A', {1,2,3,4,7,9,11,12});%[1, 1];% {'H1', 'C'};
+    %pln.bioModel.includedFragments = struct('Z', {1}, 'A', {1});%[1, 1];% {'H1', 'C'};
+end
+pln.bioModel.stoppingPowerTableName = 'SPtable'; %'RBEtable_rapidLEMI_testTable.mat';
+dij = matRad_calcDoseInfluence(ct,cst,stf,pln);
+
+%% Fluence optimization
+resultGUI = matRad_fluenceOptimization(dij,cst,pln);
+
+%% Monte Carlo dose calculation
+% select Monte Carlo engine ('MCsquare' very fast for physical protons, 'TOPAS' slow but versatile for everything else)
+pln.propDoseCalc.engine = 'TOPAS';
+%pln.propDoseCalc.engine = 'TOPAS';
+% pln.propDoseCalc.materialConverter.mode = 'RSP';
+%pln.propDoseCalc.materialConverter.mode = 'HUToWaterSchneider';
+%pln.propDoseCalc.materialConverter.densityCorrection = 'Schneider_TOPAS';
+
+% set number of histories lower than default for this example (default: 1e8)
+pln.propDoseCalc.numHistoriesDirect     = 1e7;
+pln.propDoseCalc.numOfRuns              = 10;
+pln.propDoseCalc.externalCalculation    = 'write';
+pln.propDoseCalc.scorer.RBE_model       = {'LEM'};
+resultGUI_MC = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w); 
+
+%% Monte Carlo dose calculation
+% select Monte Carlo engine ('MCsquare' very fast for physical protons, 'TOPAS' slow but versatile for everything else)
+pln.propDoseCalc.engine = 'TOPAS';
+
+% set number of histories lower than default for this example (default: 1e8)
+pln.propDoseCalc.numHistoriesDirect     = 1e7;
+pln.propDoseCalc.numOfRuns              = 10;
+pln.propDoseCalc.externalCalculation    = 'write';
+resultGUI_MC = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w);
+
+%% Now let's recalculate with the constRBE model
+pln.bioModel = matRad_ConstantRBE();
+pln.bioModel.RBE = 1.1; %1.1 is standard, this is for illustration
+
+resultGUI_recalc = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w);
+
+%% Compare Dose distributions
+
+pln.displayQuantity = 'RBExDose';
+matRad_compareDose(resultGUI.RBExDose,resultGUI_recalc.RBExDose,ct,cst, [1, 1, 0] , 'off', pln, [3, 3], 3, 'global');
+
+%% Compare multi Ip cluster dose
+
+prefix = 'clusterDose_F';
+prefix2 = 'effectiveClusters_F';
+
+% Get all field names
+fNames = fieldnames(resultGUI);
+
+% Find matches that start with the prefix
+matches = startsWith(fNames, prefix);
+matches2 = startsWith(fNames, prefix2);
+
+% Select those fields
+selected = fNames(matches);
+selected2 = fNames(matches2);
+
+% Extract values into a new struct
+multiIp = rmfield(resultGUI, fNames(~matches));
+multiIpEffective = rmfield(resultGUI, fNames(~matches2));
+
+x = 3.*(linspace(1, 160, 160)-0.5);
+colors = cool;
+
+figure()
+hold on
+grid on
+for i=1:length(selected)
+
+    cube = multiIp.(selected{i});
+    yg = squeeze(cube(80, :, 80));
+    delta = floor(size(colors,1)/length(selected));
+    plot(x, yg./(max(yg(:))), 'DisplayName', selected{i}, 'Color', colors((i-1).*delta+1, :), 'LineWidth', 2+i*0.1)
+end
+for i = 1:length(selected2)
+    cubeEffClust = multiIpEffective.(selected2{i});
+    ygE = squeeze(cubeEffClust(80, :, 80));
+    delta = floor(size(colors,1)/length(selected));
+    plot(x, ygE./(max(ygE(:))), 'DisplayName', selected2{i}, 'Color', colors((i-1).*delta+1, :), 'LineWidth', 2+i*0.1)
+
+end
+yd = squeeze(resultGUI.physicalDose(80, :, 80));
+plot(x, yd./(max(yd)),  'DisplayName', 'physicalDose', 'Color', 'k', 'LineStyle', '--', 'LineWidth', 1.7)
+yeff = squeeze(resultGUI.effect(80, :, 80));
+plot(x, yeff./(max(yeff)),  'DisplayName', 'effect', 'Color', 'k', 'LineStyle', '-', 'LineWidth', 1.7)
+if sum(matches) == 0
+    yg = squeeze(resultGUI.clusterDose(80, :, 80));
+    plot(x, yg./(max(yg)),  'DisplayName', 'cluster Dose', 'Color', 'r', 'LineStyle', '-', 'LineWidth', 1.7)
+end
+yphi = squeeze(resultGUI.fluence(80, :, 80));
+plot(x, yphi./(max(yphi)),  'DisplayName', 'fluence', 'Color', 'k', 'LineStyle', ':', 'LineWidth', 1.7)
+xlim([121, 300])
+ylim([0, 1.1])
+
+legend('Location','northwest', 'FontSize',20)
+movegui('south')
+
+%% Compare multi averaged Ip
+
+prefix = 'averageIp_F';
+
+% Get all field names
+fNames = fieldnames(resultGUI);
+
+% Find matches that start with the prefix
+matches = startsWith(fNames, prefix);
+
+% Select those fields
+selected = fNames(matches);
+
+% Extract values into a new struct
+multiIp = rmfield(resultGUI, fNames(~matches));
+
+x = 3.*(linspace(1, 160, 160)-0.5);
+colors = cool;
+
+figure()
+hold on
+grid on
+for i=1:length(selected)
+
+    cube = multiIp.(selected{i});
+    yg = squeeze(cube(80, :, 80));
+    delta = floor(size(colors,1)/length(selected));
+    plot(x, yg./(max(yg(:))), 'DisplayName', selected{i}, 'Color', colors((i-1).*delta+1, :), 'LineWidth', 1.5+i*0.1)
+
+end
+yd = squeeze(resultGUI.physicalDose(80, :, 80));
+plot(x, yd./(max(yd)),  'DisplayName', 'physicalDose', 'Color', 'k', 'LineStyle', '--')
+%yeff = squeeze(resultGUI.effect(80, :, 80));
+%plot(x, yeff./(max(yeff)),  'DisplayName', 'effect', 'Color', 'k', 'LineStyle', '-')
+yLET = squeeze(resultGUI.LET(80, :, 80));
+plot(x, yLET./(max(yLET)),  'DisplayName', 'LET', 'Color', 'k', 'LineStyle', '-')
+xlim([121, 300])
+ylim([0, 1.1])
+
+legend('Location','northwest', 'FontSize',15)
+
+figure()
+hold on
+grid on
+for i=1:length(selected)
+
+    cube = multiIp.(selected{i});
+    yg = squeeze(cube(80, :, 80));
+    delta = floor(size(colors,1)/length(selected));
+    plot(x, yg, 'DisplayName', selected{i}, 'Color', colors((i-1).*delta+1, :), 'LineWidth', 1.5+i*0.1)
+
+end
+yd = squeeze(resultGUI.physicalDose(80, :, 80));
+plot(x, yd./(max(yd)),  'DisplayName', 'physicalDose', 'Color', 'k', 'LineStyle', '--')
+%yeff = squeeze(resultGUI.effect(80, :, 80));
+%plot(x, yeff./(max(yeff)),  'DisplayName', 'effect', 'Color', 'k', 'LineStyle', '-')
+yLET = squeeze(resultGUI.LET(80, :, 80));
+plot(x, yLET./(max(yLET)),  'DisplayName', 'LET', 'Color', 'k', 'LineStyle', '-')
+xlim([121, 300])
+%ylim([0, 1.1])
+
+legend('Location','northwest', 'FontSize',15)
+
+%% Compare Ip combination
+prefix = 'clusterDose_F';
+
+% Get all field names
+fNames = fieldnames(resultGUI);
+
+% Find matches that start with the prefix
+matches = startsWith(fNames, prefix);
+
+% Select those fields
+selected = fNames(matches);
+
+% Extract values into a new struct
+multiIp = rmfield(resultGUI, fNames(~matches));
+
+x = 3.*(linspace(1, 160, 160)-0.5);
+colors = cool;
+
+figure()
+hold on
+grid on
+
+a = 1/2;
+b = 1/2;
+g1 = selected{2};
+g2 = selected{3};
+cubeA = multiIp.(g1);
+cubeB = multiIp.(g2);
+
+ygA = squeeze(cubeA(80, :, 80));
+ygB = squeeze(cubeB(80, :, 80));
+
+
+plot(x, (a.*ygA+b.*ygB)./(max(a.*ygA+b.*ygB)), 'Color', 'r', 'DisplayName', [num2str(a) '' g1 '+' num2str(b) '' g2])
+
+yd = squeeze(resultGUI.physicalDose(80, :, 80));
+plot(x, yd./(max(yd)),  'DisplayName', 'physicalDose', 'Color', 'k', 'LineStyle', '--')
+yeff = squeeze(resultGUI.effect(80, :, 80));
+plot(x, yeff./(max(yeff)),  'DisplayName', 'effect', 'Color', 'k', 'LineStyle', '-')
+xlim([121, 300])
+ylim([0, 1.1])
+
+legend('Location','northwest')
+movegui('south')
