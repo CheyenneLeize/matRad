@@ -42,16 +42,28 @@ function resultGUI = matRad_calcDoseForward(ct,cst,stf,pln,w)
         end
     end
     
+
     engine = DoseEngines.matRad_DoseEngineBase.getEngineFromPln(pln);
+ 
+
+    disp(engine);
+    class(engine);
+   
     
     if nargin < 5
+        disp('nargin <5');
         resultGUI = engine.calcDoseForward(ct,cst,stf);
     else
+        disp('nargin >= 5');
         resultGUI = engine.calcDoseForward(ct,cst,stf,w);
     end
     
     end
     
+    
+    
+    
+
     
     
     

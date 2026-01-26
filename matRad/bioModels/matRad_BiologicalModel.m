@@ -47,10 +47,20 @@ classdef (Abstract) matRad_BiologicalModel < handle
     end
 
     methods %(Abstract)
-        function bixel = calcBiologicalQuantitiesForBixel(this)
+        function bixel = calcBiologicalQuantitiesForBixel(this, bixel, kernels)
             % the actual calculation method wich calculates biological quantities for individual beamlets
-            % Needs to be implemented in non abstract subclasses. 
-            throw(MException('MATLAB:class:AbstractMember','Abstract function calcBiologicalQuantitiesForBixel of your BiologicalModel needs to be implemented!'));
+            % Needs to be implemented in non abstract subclasses
+            
+            bixel = struct();
+
+            % dummy implementation
+
+            bixel.alpha = 0.075;
+            bixel.beta  = 0.045;
+            bixel.RBE   = 1;
+            bixel.LET   = 0;
+
+            %throw(MException('MATLAB:class:AbstractMember','Abstract function calcBiologicalQuantitiesForBixel of your BiologicalModel needs to be implemented!'));
         end
     end
 

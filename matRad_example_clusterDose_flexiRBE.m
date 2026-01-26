@@ -18,7 +18,7 @@ for i=1:size(cst,1)
 end
 
 %% Set cst cluster dose 
-
+%{
 for i=1:size(cst,1)
     cst{i,6}{1}.robustness = 'none';
     cst{i,6}{1}.quantity   = 'clusterDose';
@@ -29,6 +29,7 @@ cst{1,6}{1}.penalty     = 1e-27;
 
 cst{2,6}{1}.parameters  = {[3.9e16]};
 cst{1,6}{1}.penalty     = 1e-25;
+%}
 
 %% Set pln options
 
@@ -87,13 +88,8 @@ pln.propDoseCalc.calcBioDose                = true;
 pln.propDoseCalc.includeElectrons           = false;
 %pln.propDoseCalc.scoreTOPAS_RBE             = false;
 
-pln.propDoseCalc.MCTSdatabase	            = 2024;
+pln.propDoseCalc.MCTSdatabase	            = 2024; %maybe an error in here?
 
-%% Forward calculation
-
-
-%pln.propDoseCalc.engine = 'HongPB';
-%resultGUI = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w);
 
 %% generate steering file
 
@@ -117,7 +113,7 @@ stf.machine = pln.machine;
 
 pln.bioModel = matRad_bioModel(pln.radiationMode,'doseAveragedTabulatedAlphaBeta');
 %pln.bioModel.quantityTableName = 'RBE_LEM1_T1';
-pln.bioModel.quantityTableName = 'RBE_mMKM_update_rn5';
+pln.bioModel.quantityTableName = 'RBE_LEM1_update_rn5_19';
 
 pln.bioModel.defaultAlphaX = 0.075;
 pln.bioModel.defaultBetaX = 0.045;
@@ -136,11 +132,17 @@ resultGUI = matRad_fluenceOptimization(dij,cst,pln);
 
 %% Monte Carlo dose calculation
 % select Monte Carlo engine ('MCsquare' very fast for physical protons, 'TOPAS' slow but versatile for everything else)
+
+
 pln.propDoseCalc.engine = 'TOPAS';
 %pln.propDoseCalc.engine = 'TOPAS';
 % pln.propDoseCalc.materialConverter.mode = 'RSP';
 %pln.propDoseCalc.materialConverter.mode = 'HUToWaterSchneider';
 %pln.propDoseCalc.materialConverter.densityCorrection = 'Schneider_TOPAS';
+
+disp(pln.propDoseCalc.engine);
+%disp(pln.propDoseCalc.externalCalculation);
+pwd
 
 % set number of histories lower than default for this example (default: 1e8)
 pln.propDoseCalc.numHistoriesDirect     = 1e7;
@@ -149,6 +151,10 @@ pln.propDoseCalc.externalCalculation    = 'write';
 pln.propDoseCalc.scorer.RBE_model       = {'LEM'};
 resultGUI_MC = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w); 
 
+%% Read back output
+
+pln.propDoseCalc.externalCalculation = 'C:\folderPath'; %folder path not implemented yet
+resultGUI_MC = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w);
 %% Monte Carlo dose calculation
 % select Monte Carlo engine ('MCsquare' very fast for physical protons, 'TOPAS' slow but versatile for everything else)
 pln.propDoseCalc.engine = 'TOPAS';
@@ -157,13 +163,16 @@ pln.propDoseCalc.engine = 'TOPAS';
 pln.propDoseCalc.numHistoriesDirect     = 1e7;
 pln.propDoseCalc.numOfRuns              = 10;
 pln.propDoseCalc.externalCalculation    = 'write';
+
+
+
 resultGUI_MC = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w);
 
-%% Now let's recalculate with the constRBE model
+%% Now let's recalculate with the constRBE model %not important for carbon for now
 pln.bioModel = matRad_ConstantRBE();
 pln.bioModel.RBE = 1.1; %1.1 is standard, this is for illustration
 
-resultGUI_recalc = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w);
+resultGUI_recalc = matRad_calcDoseForward(ct,cst,stf,pln,resultGUI.w); %not properly implemented yet
 
 %% Compare Dose distributions
 

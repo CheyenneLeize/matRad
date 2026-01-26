@@ -112,8 +112,8 @@ classdef matRad_TopasMCEngine < DoseEngines.matRad_MonteCarloEngineAbstract
             'reportQuantity',{{'Sum'}});%'reportQuantity',{{'Sum','Standard_Deviation'}});         % 'reportQuantity',{{'Sum'}});
         scorerRBEmodelOrderForEvaluation = {'MCN','WED','LEM','libamtrack'};
         bioParameters = struct( 'PrescribedDose',2,...
-            'AlphaX',0.1,...
-            'BetaX',0.05,...
+            'AlphaX',0.075,...
+            'BetaX',0.045,...
             'SimultaneousExposure','"True"');
 
         %Physics
@@ -1369,10 +1369,10 @@ classdef matRad_TopasMCEngine < DoseEngines.matRad_MonteCarloEngineAbstract
                 fprintf(fID,'\n');
             end
             if obj.MCTSdatabase == 2021
-                fprintf(fID,'s:Sim/MCTSvFolder = "/home/s742o/TOPASplans/MCTS-DataBase"\n');
+                fprintf(fID,'s:Sim/MCTSvFolder = "/home/c657e/TOPASplans/MCTS-DataBase"\n');
                 fprintf(fID,'\n');
             elseif obj.MCTSdatabase == 2024
-                fprintf(fID,'s:Sim/MCTSvFolder = "/home/s742o/MCTS-Database-v2024"\n');
+                fprintf(fID,'s:Sim/MCTSvFolder = "/home/c657e/MCTS-Database-v2024"\n');
                 fprintf(fID,'\n');
             else
                 error('Select a proper MCTS database version!');
