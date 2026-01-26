@@ -1369,7 +1369,7 @@ classdef matRad_TopasMCEngine < DoseEngines.matRad_MonteCarloEngineAbstract
                 fprintf(fID,'\n');
             end
             if obj.MCTSdatabase == 2021
-                fprintf(fID,'s:Sim/MCTSvFolder = "/home/c657e/TOPASplans/MCTS-DataBase"\n');
+                fprintf(fID,'s:Sim/MCTSvFolder = "/home/c657e/MCTS-DataBase"\n');
                 fprintf(fID,'\n');
             elseif obj.MCTSdatabase == 2024
                 fprintf(fID,'s:Sim/MCTSvFolder = "/home/c657e/MCTS-Database-v2024"\n');
